@@ -3,34 +3,39 @@ import bodyParser from "body-parser";
 import axios from "axios";
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.use(bodyParser.json());
 
+// Main proxy route
 app.post("/", async (req, res) => {
+  const { id, method, params } = req.body;
+
   try {
-    const pipeUrl = process.env.REDDIT_PIPE_URL;
-    if (!pipeUrl) {
-      return res.status(500).json({ error: "Missing REDDIT_PIPE_URL" });
-    }
+    // Forward ONLY the params to Pipedream
+    const response = await axios.post(
+      process.env.REDDIT_PIPE_URL,
+      params, // <-- just the params object
+      { headers: { "Content-Type": "application/json" } }
+    );
 
-    console.log("Forwarding request to:", pipeUrl);
-    console.log("Request body:", req.body);
-
-    const response = await axios.post(pipeUrl, req.body, {
-      headers: { "Content-Type": "application/json" },
+    res.json({
+      jsonrpc: "2.0",
+      id,
+      result: response.data,
     });
+  } catch (error) {
+    console.error("Proxy error:", error.message);
 
-    console.log("Response from Pipedream:", response.data);
-
-    // ✅ Send Pipedream’s response back
-    res.status(200).json(response.data);
-  } catch (err) {
-    console.error("Proxy error:", err.message, err.response?.data);
-    res.status(500).json({ error: "Proxy failed to call Pipedream", detail: err.message });
+    res.status(500).json({
+      jsonrpc: "2.0",
+      id,
+      error: "Proxy failed to call Pipedream",
+      detail: error.response?.data || error.message,
+    });
   }
 });
 
-app.listen(port, () => {
-  console.log(`TeamPal MCP Proxy running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`✅ TeamPal MCP Proxy running on port ${PORT}`);
 });
