@@ -1,179 +1,153 @@
 import express from "express";
 import bodyParser from "body-parser";
-import axios from "axios";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(bodyParser.json());
 
+// === Environment variables ===
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const USERNAME = process.env.USERNAME;
+const PASSWORD = process.env.PASSWORD;
+const USER_AGENT = process.env.USER_AGENT;
+const PIPE_URL = process.env.PIPE_URL;
+
+// === Helper: Get Reddit Access Token ===
+async function getAccessToken() {
+  const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${auth}`,
+      "User-Agent": USER_AGENT,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: `grant_type=password&username=${USERNAME}&password=${PASSWORD}`,
+  });
+
+  if (!res.ok) throw new Error(`Failed to get token: ${res.statusText}`);
+  const data = await res.json();
+  return data.access_token;
+}
+
+// === MCP “initialize” route (required by TeamPal) ===
 app.post("/", async (req, res) => {
+  const { method, params } = req.body || {};
+
+  // Handle TeamPal MCP initialization
+  if (method === "initialize" || !method) {
+    return res.json({
+      success: true,
+      name: "Reddit Multi-Action Agent",
+      description: "Allows Ollie to search posts, reply, message, and post on Reddit.",
+      methods: [
+        "reddit.search_posts",
+        "reddit.reply_comment",
+        "reddit.send_message",
+        "reddit.submit_post",
+        "reddit.list_subreddits"
+      ],
+    });
+  }
+
   try {
-    const PIPE_URL = process.env.PIPE_URL;
-    const CLIENT_ID = process.env.CLIENT_ID;
-    const CLIENT_SECRET = process.env.CLIENT_SECRET;
-    const USERNAME = process.env.USERNAME;
-    const PASSWORD = process.env.PASSWORD;
-    const USER_AGENT = process.env.USER_AGENT;
-
-    if (!CLIENT_ID || !CLIENT_SECRET || !USERNAME || !PASSWORD || !USER_AGENT) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing Reddit credentials in environment variables.",
-      });
-    }
-
-    const body = req.body;
-    if (!body || !body.method) {
-      return res.status(400).json({
-        success: false,
-        error: "No method provided in request body.",
-      });
-    }
-
-    const method = body.method;
-    const params = body.params || {};
-
-    console.log("🔹 Method:", method);
-    console.log("🔹 Params:", params);
-
-    // Authenticate to Reddit
-    const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
-    const tokenResponse = await axios.post(
-      "https://www.reddit.com/api/v1/access_token",
-      new URLSearchParams({
-        grant_type: "password",
-        username: USERNAME,
-        password: PASSWORD,
-      }),
-      {
-        headers: {
-          Authorization: `Basic ${auth}`,
-          "User-Agent": USER_AGENT,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+    switch (method) {
+      // === Search Reddit posts ===
+      case "reddit.search_posts": {
+        const token = await getAccessToken();
+        const { subreddit, query, limit } = params;
+        const url = `https://oauth.reddit.com/r/${subreddit}/search?q=${encodeURIComponent(query)}&limit=${limit}&sort=relevance`;
+        const response = await fetch(url, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "User-Agent": USER_AGENT,
+          },
+        });
+        const json = await response.json();
+        const posts = json.data.children.map(post => ({
+          id: post.data.id,
+          title: post.data.title,
+          author: post.data.author,
+          permalink: `https://reddit.com${post.data.permalink}`,
+        }));
+        return res.json({ success: true, posts });
       }
-    );
 
-    const accessToken = tokenResponse.data.access_token;
-    console.log("✅ Reddit Access Token Acquired");
-
-    // ============ HANDLERS ============
-    if (method === "reddit.search_posts") {
-      const { subreddit, query, limit } = params;
-      const response = await axios.get(
-        `https://oauth.reddit.com/r/${subreddit}/search?q=${query}&limit=${limit}&sort=new`,
-        {
+      // === Reply to a comment ===
+      case "reddit.reply_comment": {
+        const token = await getAccessToken();
+        const { parent_id, text } = params;
+        const response = await fetch("https://oauth.reddit.com/api/comment", {
+          method: "POST",
           headers: {
-            Authorization: `Bearer ${accessToken}`,
+            "Authorization": `Bearer ${token}`,
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: `thing_id=${parent_id}&text=${encodeURIComponent(text)}`,
+        });
+        const result = await response.json();
+        return res.json({ success: true, result });
+      }
+
+      // === Send a private message ===
+      case "reddit.send_message": {
+        const token = await getAccessToken();
+        const { to, subject, text } = params;
+        const response = await fetch("https://oauth.reddit.com/api/compose", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: `to=${to}&subject=${encodeURIComponent(subject)}&text=${encodeURIComponent(text)}`,
+        });
+        const result = await response.json();
+        return res.json({ success: true, result });
+      }
+
+      // === Submit a new Reddit post ===
+      case "reddit.submit_post": {
+        const token = await getAccessToken();
+        const { subreddit, title, text } = params;
+        const response = await fetch("https://oauth.reddit.com/api/submit", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: `sr=${subreddit}&title=${encodeURIComponent(title)}&text=${encodeURIComponent(text)}&kind=self`,
+        });
+        const result = await response.json();
+        return res.json({ success: true, result });
+      }
+
+      // === List subreddits ===
+      case "reddit.list_subreddits": {
+        const token = await getAccessToken();
+        const response = await fetch("https://oauth.reddit.com/subreddits/mine/subscriber", {
+          headers: {
+            "Authorization": `Bearer ${token}`,
             "User-Agent": USER_AGENT,
           },
-        }
-      );
+        });
+        const json = await response.json();
+        const subs = json.data.children.map(sub => sub.data.display_name);
+        return res.json({ success: true, subreddits: subs });
+      }
 
-      return res.json({
-        success: true,
-        posts: response.data.data.children.map((p) => ({
-          id: p.data.id,
-          title: p.data.title,
-          author: p.data.author,
-          permalink: `https://reddit.com${p.data.permalink}`,
-        })),
-      });
+      default:
+        return res.status(400).json({ error: `Unsupported method: ${method}` });
     }
-
-    if (method === "reddit.reply_comment") {
-      const { parent_id, text } = params;
-      const response = await axios.post(
-        "https://oauth.reddit.com/api/comment",
-        new URLSearchParams({
-          thing_id: parent_id,
-          text,
-        }),
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "User-Agent": USER_AGENT,
-          },
-        }
-      );
-
-      return res.json({ success: true, reply: response.data });
-    }
-
-    if (method === "reddit.submit_post") {
-      const { subreddit, title, text } = params;
-      const response = await axios.post(
-        "https://oauth.reddit.com/api/submit",
-        new URLSearchParams({
-          sr: subreddit,
-          title,
-          text,
-          kind: "self",
-        }),
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "User-Agent": USER_AGENT,
-          },
-        }
-      );
-
-      return res.json({ success: true, post: response.data });
-    }
-
-    if (method === "reddit.send_message") {
-      const { to, subject, message } = params;
-      const response = await axios.post(
-        "https://oauth.reddit.com/api/compose",
-        new URLSearchParams({
-          to,
-          subject,
-          text: message,
-        }),
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "User-Agent": USER_AGENT,
-          },
-        }
-      );
-
-      return res.json({ success: true, message: response.data });
-    }
-
-    if (method === "reddit.list_subreddits") {
-      const response = await axios.get(
-        "https://oauth.reddit.com/subreddits/mine/subscriber",
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "User-Agent": USER_AGENT,
-          },
-        }
-      );
-
-      return res.json({
-        success: true,
-        subreddits: response.data.data.children.map(
-          (s) => s.data.display_name
-        ),
-      });
-    }
-
-    return res.status(400).json({
-      success: false,
-      error: `Unsupported method: ${method}`,
-    });
-  } catch (err) {
-    console.error("❌ Error:", err.response?.data || err.message);
-    return res.status(500).json({
-      success: false,
-      error: err.response?.data || err.message,
-    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Start server
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 MCP Reddit Proxy running on port ${PORT}`);
-});
+// === Start server ===
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Reddit MCP running on port ${PORT}`));
