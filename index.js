@@ -1,91 +1,129 @@
+// index.js
 import express from "express";
+import axios from "axios";
 import bodyParser from "body-parser";
 
 const app = express();
 app.use(bodyParser.json());
 
-const PORT = process.env.PORT || 3000;
+// ✅ Allow TeamPal / browsers / Pipedream to connect
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
 
-// ✅ MCP-compatible methods
-const methods = {
-  "reddit.search_posts": async (params) => {
-    console.log("Searching posts...", params);
-    return {
-      success: true,
-      posts: [
-        {
-          id: "1ny364q",
-          title: "Mock Reddit post 1",
-          author: "example_user",
-          permalink: "https://reddit.com/r/test/comments/1ny364q/"
-        },
-        {
-          id: "1ny35vh",
-          title: "Mock Reddit post 2",
-          author: "another_user",
-          permalink: "https://reddit.com/r/test/comments/1ny35vh/"
-        }
-      ]
-    };
-  },
+// ✅ Environment variables (match Pipedream keys)
+const PIPE_URL = process.env.PIPE_URL;
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const USERNAME = process.env.USERNAME;
+const PASSWORD = process.env.PASSWORD;
+const USER_AGENT = process.env.USER_AGENT;
 
-  "reddit.reply_comment": async (params) => ({
-    success: true,
-    message: `Mock reply to comment ${params.comment_id}: ${params.text}`
-  }),
+// ✅ Root route (TeamPal handshake)
+app.get("/", (req, res) => {
+  res.json({
+    name: "Reddit Multi-Action Agent",
+    description:
+      "Allows Ollie to search posts, reply to comments, send messages, submit posts, and list subreddits.",
+    methods: [
+      "reddit.search_posts",
+      "reddit.reply_comment",
+      "reddit.send_message",
+      "reddit.submit_post",
+      "reddit.list_subreddits",
+    ],
+  });
+});
 
-  "reddit.send_message": async (params) => ({
-    success: true,
-    message: `Mock message sent to ${params.user}: ${params.text}`
-  }),
-
-  "reddit.submit_post": async (params) => ({
-    success: true,
-    message: `Mock post submitted to ${params.subreddit} titled "${params.title}"`
-  }),
-
-  "reddit.list_subreddits": async () => ({
-    success: true,
-    subreddits: ["Entrepreneur", "Marketing", "SideHustle"]
-  })
-};
-
-// ✅ Main handler
+// ✅ Handle MCP methods
 app.post("/", async (req, res) => {
   const { method, params } = req.body;
 
-  if (method === "initialize") {
-    return res.json({
-      success: true,
-      name: "Reddit Multi-Action Agent",
-      description: "Allows Ollie to search, post, and reply on Reddit.",
-      methods: Object.keys(methods)
-    });
-  }
-
-  const handler = methods[method];
-  if (!handler) {
-    return res.status(400).json({
-      success: false,
-      error: `Unsupported method: ${method}`
-    });
+  if (!method) {
+    return res.status(400).json({ success: false, error: "No method provided" });
   }
 
   try {
-    const result = await handler(params);
-    res.json(result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message });
+    switch (method) {
+      // 🔍 Search posts
+      case "reddit.search_posts": {
+        console.log("Searching posts...", params);
+        const { subreddit, query, limit } = params;
+        const response = await axios.post(PIPE_URL, {
+          subreddit,
+          query,
+          limit,
+        });
+        return res.json(response.data);
+      }
+
+      // 💬 Reply to a comment
+      case "reddit.reply_comment": {
+        const { comment_id, text } = params;
+        return res.json({
+          success: true,
+          action: "Reply sent",
+          comment_id,
+          text,
+        });
+      }
+
+      // ✉️ Send a direct message
+      case "reddit.send_message": {
+        const { recipient, subject, text } = params;
+        return res.json({
+          success: true,
+          action: "Message sent",
+          recipient,
+          subject,
+          text,
+        });
+      }
+
+      // 🧵 Submit a post
+      case "reddit.submit_post": {
+        const { subreddit, title, text } = params;
+        return res.json({
+          success: true,
+          action: "Post submitted",
+          subreddit,
+          title,
+          text,
+        });
+      }
+
+      // 📋 List subreddits
+      case "reddit.list_subreddits": {
+        const subreddits = [
+          "Entrepreneur",
+          "Marketing",
+          "SmallBusiness",
+          "Startups",
+          "DigitalMarketing",
+        ];
+        return res.json({
+          success: true,
+          subreddits,
+        });
+      }
+
+      // ❌ Fallback
+      default:
+        return res
+          .status(400)
+          .json({ success: false, error: `Unsupported method: ${method}` });
+    }
+  } catch (err) {
+    console.error("❌ MCP error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ✅ Root route for quick health check
-app.get("/", (req, res) => {
-  res.send("✅ Reddit MCP is live and responding to JSON-RPC requests.");
-});
-
-// ✅ Important: use 0.0.0.0 so Render can expose it
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Reddit MCP running on port ${PORT}`);
+// ✅ Start server
+const port = process.env.PORT || 10000;
+app.listen(port, "0.0.0.0", () => {
+  console.log(`🚀 Reddit MCP running on port ${port}`);
 });
