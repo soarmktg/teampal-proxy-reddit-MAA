@@ -13,6 +13,7 @@ app.use(express.json());
 
 // 🔧 Replace this with your actual Pipedream webhook
 const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net";
+console.log(`✅ Connected to Pipedream webhook: ${PIPEDREAM_WEBHOOK_URL}`);
 
 /* ────────────────────────────────
    SSE / HTTP Streamable endpoint
