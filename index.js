@@ -1,102 +1,73 @@
-import express from "express";
-import bodyParser from "body-parser";
-import axios from "axios";
-import dotenv from "dotenv";
+/**
+ * MCP-compatible SSE + JSON-RPC bridge for Teampal <-> Pipedream <-> Reddit
+ * Deploy on Render.com as a Node.js web service
+ */
 
-dotenv.config();
+import express from "express";
+import fetch from "node-fetch";
+import cors from "cors";
 
 const app = express();
-app.use(bodyParser.json());
+app.use(cors());
+app.use(express.json());
 
-// Root endpoint (TeamPal discovery)
+// 🔧 Replace with your actual Pipedream workflow URL
+const PIPEDREAM_WEBHOOK_URL = "https://eoxxx.m.pipedream.net"; 
+
+// --- SSE HANDSHAKE (required by Teampal MCP) ---
 app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    name: "Reddit Multi-Action Agent",
-    description: "Search, post, and comment on Reddit via TeamPal",
-    methods: [
-      "reddit.search_posts",
-      "reddit.reply_comment",
-      "reddit.submit_post",
-      "reddit.list_subreddits"
-    ],
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  console.log("Teampal connected via SSE");
+
+  // Initial handshake to satisfy MCP
+  res.write(`data: ${JSON.stringify({ jsonrpc: "2.0", id: 1, result: "connected" })}\n\n`);
+
+  // Keep alive ping every 15 seconds
+  const interval = setInterval(() => {
+    res.write(`data: ${JSON.stringify({ jsonrpc: "2.0", id: 0, method: "ping" })}\n\n`);
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(interval);
+    console.log("Teampal SSE connection closed");
   });
 });
 
-// Info endpoint
-app.get("/info", (req, res) => {
-  res.json({
-    name: "Reddit Multi-Action Agent",
-    description: "MCP interface for Reddit via Render and Pipedream",
-    methods: [
-      "reddit.search_posts",
-      "reddit.reply_comment",
-      "reddit.submit_post",
-      "reddit.list_subreddits"
-    ],
-    author: "LM Ventures",
-    health: "OK"
-  });
-});
-
-// Initialize endpoint (TeamPal handshake)
-app.get("/initialize", (req, res) => {
-  res.json({
-    success: true,
-    name: "Reddit Multi-Action Agent",
-    description: "Provides Reddit actions (search, post, reply) to TeamPal",
-    version: "1.0.0"
-  });
-});
-
-// Handle JSON-RPC requests from TeamPal
+// --- HANDLE ACTION CALLS ---
 app.post("/", async (req, res) => {
-  const { method, params } = req.body;
-  console.log(`Received method: ${method}`);
+  const { id, method, params } = req.body;
+
+  console.log("Incoming JSON-RPC from Teampal:", method, params);
 
   try {
-    switch (method) {
-      case "reddit.search_posts":
-        res.json({
-          success: true,
-          posts: [
-            { id: "1ny364q", title: "Mock Reddit post", author: "example_user", permalink: "https://reddit.com/test/comments/1ny364q" },
-            { id: "1ny35vh", title: "Another post", author: "another_user", permalink: "https://reddit.com/test/comments/1ny35vh" }
-          ]
-        });
-        break;
+    // Forward to your Pipedream workflow (acts as Reddit logic)
+    const response = await fetch(PIPEDREAM_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method, params }),
+    });
 
-      case "reddit.reply_comment":
-        res.json({
-          success: true,
-          message: `Replied to comment ${params.comment_id} with "${params.text}"`,
-        });
-        break;
+    const result = await response.json().catch(() => ({}));
 
-      case "reddit.submit_post":
-        res.json({
-          success: true,
-          message: `Posted to subreddit ${params.subreddit}: ${params.title}`,
-        });
-        break;
-
-      case "reddit.list_subreddits":
-        res.json({
-          success: true,
-          subreddits: ["Entrepreneur", "Marketing", "SmallBusiness", "Startups"],
-        });
-        break;
-
-      default:
-        res.status(400).json({ success: false, error: `Unsupported method: ${method}` });
-    }
+    res.json({ jsonrpc: "2.0", id, result: result || { ok: true } });
   } catch (err) {
-    console.error("Error handling request:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("Error forwarding to Pipedream:", err);
+    res.json({
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32000, message: err.message || "Pipedream error" },
+    });
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`✅ Reddit MCP running on port ${PORT}`);
+// --- BASIC HEALTH CHECK ---
+app.get("/health", (req, res) => {
+  res.status(200).send("MCP SSE bridge is healthy");
 });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ MCP bridge running on port ${PORT}`));
