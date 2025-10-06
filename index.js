@@ -1,57 +1,99 @@
+/**
+ * TeamPal MCP Bridge (Render-ready, CommonJS, Node 24.x)
+ * Reddit → Pipedream → TeamPal via HTTP Streamable JSON-RPC
+ */
+
+const express = require("express");
+const fetch = require("node-fetch");
+const cors = require("cors");
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// 🔧 Replace this with your actual Pipedream webhook
+const PIPEDREAM_WEBHOOK_URL = "https://eoxxx.m.pipedream.net";
+
+/* ────────────────────────────────
+   SSE / HTTP Streamable endpoint
+──────────────────────────────── */
+app.get("/", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  console.log("✅ Teampal connected via SSE");
+
+  res.write(`data: ${JSON.stringify({ jsonrpc: "2.0", id: 0, result: "connected" })}\n\n`);
+
+  const interval = setInterval(() => {
+    res.write(`data: ${JSON.stringify({ jsonrpc: "2.0", id: 0, method: "ping" })}\n\n`);
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(interval);
+    console.log("❌ Teampal SSE connection closed");
+  });
+});
+
+/* ────────────────────────────────
+   JSON-RPC Endpoint
+──────────────────────────────── */
 app.post("/", async (req, res) => {
   const { id, method, params } = req.body;
-  console.log("Incoming JSON-RPC from Teampal:", method, params);
+  console.log("Incoming JSON-RPC from Teampal:", method);
 
-  // === 1️⃣ Handle MCP initialize handshake ===
+  // 1️⃣ initialize handshake
   if (method === "initialize") {
     const result = {
       protocolVersion: "2025-03-26",
       capabilities: { tools: { listChanged: true } },
-      serverInfo: { name: "reddit-mcp-bridge", version: "1.0.0" }
+      serverInfo: { name: "reddit-mcp-bridge", version: "1.1.0" }
     };
     console.log("✅ Responding to initialize handshake");
     return res.json({ jsonrpc: "2.0", id, result });
   }
 
-  // === 2️⃣ Handle MCP notifications/initialized ===
+  // 2️⃣ notifications/initialized
   if (method === "notifications/initialized") {
-    console.log("✅ Received 'notifications/initialized' from Teampal");
+    console.log("✅ Acknowledged notifications/initialized");
     return res.json({ jsonrpc: "2.0", id, result: { ok: true } });
   }
 
-  // === 3️⃣ Handle tools/list ===
+  // 3️⃣ tools/list
   if (method === "tools/list") {
     console.log("✅ Responding with tool list");
     const result = {
       tools: [
         {
           name: "reddit_comment",
-          description: "Post a comment on a specific Reddit post.",
+          description: "Post a comment on a Reddit post.",
           inputSchema: {
             type: "object",
             properties: {
-              postId: { type: "string", description: "Reddit post ID or permalink" },
-              comment: { type: "string", description: "Text content of the comment" }
+              postId: { type: "string" },
+              comment: { type: "string" }
             },
             required: ["postId", "comment"]
           }
         },
         {
           name: "reddit_post",
-          description: "Create a new Reddit post in a given subreddit.",
+          description: "Create a new Reddit post.",
           inputSchema: {
             type: "object",
             properties: {
-              subreddit: { type: "string", description: "Target subreddit name" },
-              title: { type: "string", description: "Post title" },
-              body: { type: "string", description: "Post content (text)" }
+              subreddit: { type: "string" },
+              title: { type: "string" },
+              body: { type: "string" }
             },
             required: ["subreddit", "title"]
           }
         },
         {
           name: "reddit_search",
-          description: "Search posts in a subreddit by keyword.",
+          description: "Search posts in a subreddit.",
           inputSchema: {
             type: "object",
             properties: {
@@ -67,7 +109,7 @@ app.post("/", async (req, res) => {
           inputSchema: {
             type: "object",
             properties: {
-              username: { type: "string", description: "Target Reddit username" },
+              username: { type: "string" },
               subject: { type: "string" },
               message: { type: "string" }
             },
@@ -79,18 +121,12 @@ app.post("/", async (req, res) => {
     return res.json({ jsonrpc: "2.0", id, result });
   }
 
-  // === 4️⃣ Handle executing a tool (reddit_comment, reddit_post, etc.) ===
-  if (
-    method === "tools/call" &&
-    params &&
-    params.name &&
-    params.arguments
-  ) {
+  // 4️⃣ tools/call → execute via Pipedream
+  if (method === "tools/call" && params?.name) {
     const { name, arguments: args } = params;
-    console.log(`🛠 Executing tool: ${name}`, args);
+    console.log(`🛠 Executing tool: ${name}`);
 
     try {
-      // Forward to your Pipedream workflow
       const response = await fetch(PIPEDREAM_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,11 +145,19 @@ app.post("/", async (req, res) => {
     }
   }
 
-  // === 5️⃣ Default fallback for unknown methods ===
-  console.warn("⚠️ Unknown method received:", method);
+  // 5️⃣ fallback
+  console.warn("⚠️ Unknown method:", method);
   return res.json({
     jsonrpc: "2.0",
     id,
     error: { code: -32601, message: "Method not found" }
   });
 });
+
+/* ────────────────────────────────
+   Health Check
+──────────────────────────────── */
+app.get("/health", (_, res) => res.status(200).send("MCP SSE bridge is healthy"));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 MCP bridge running on port ${PORT}`));
