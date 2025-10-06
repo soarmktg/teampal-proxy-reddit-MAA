@@ -1,17 +1,19 @@
 {
   "name": "teampal-mcp-reddit-bridge",
-  "version": "1.0.2",
-  "description": "SSE + JSON-RPC bridge between Teampal MCP and Pipedream Reddit workflow",
+  "version": "1.1.0",
+  "description": "MCP-compatible JSON-RPC bridge between Teampal and Pipedream Reddit workflow. Supports initialize, notifications, tools/list, and tools/call.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.18.2",
+    "express": "^4.19.2",
     "node-fetch": "^2.6.7"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "license": "MIT",
+  "author": "LM Ventures"
 }
