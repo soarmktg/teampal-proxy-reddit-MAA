@@ -1,19 +1,31 @@
 {
-  "name": "teampal-mcp-reddit-bridge",
-  "version": "1.1.0",
-  "description": "MCP-compatible JSON-RPC bridge between Teampal and Pipedream Reddit workflow. Supports initialize, notifications, tools/list, and tools/call.",
+  "name": "teampal-proxy-reddit-maa",
+  "version": "1.0.0",
+  "description": "MCP Bridge for TeamPal Reddit Multi-Action Agent (via Pipedream + Render).",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
+    "axios": "^1.7.7",
     "express": "^4.19.2",
-    "node-fetch": "^2.6.7"
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.x"
   },
-  "license": "MIT",
-  "author": "LM Ventures"
+  "keywords": [
+    "teampal",
+    "mcp",
+    "reddit",
+    "render",
+    "pipedream",
+    "proxy",
+    "json-rpc"
+  ],
+  "author": "Soar Marketing AI Automation",
+  "license": "MIT"
 }
