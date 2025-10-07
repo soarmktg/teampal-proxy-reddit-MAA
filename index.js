@@ -8,7 +8,7 @@ app.use(express.json());
 
 // ===== CONFIG =====
 const PORT = process.env.PORT || 10000;
-const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net"; // <-- your Pipedream webhook URL
+const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net"; // ✅ Replace with your actual Pipedream webhook
 
 // ===== STARTUP LOG =====
 app.listen(PORT, () => {
@@ -22,16 +22,13 @@ app.get("/test", async (req, res) => {
   try {
     console.log("🧩 Testing full connection to Pipedream + Reddit agent...");
 
+    // ✅ Simplified payload (no nested 'event' wrapper)
     const testPayload = {
-      event: {
-        body: {
-          method: "reddit.search_posts",
-          params: {
-            subreddit: "Construction",
-            query: "estimate",
-            limit: 3,
-          },
-        },
+      method: "reddit.search_posts",
+      params: {
+        subreddit: "Construction",
+        query: "estimate",
+        limit: 3,
       },
     };
 
@@ -53,9 +50,10 @@ app.get("/test", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error contacting Pipedream:", err.message);
+    const errorData = err.response?.data || err.message;
     res
       .status(500)
-      .json({ success: false, message: `Error contacting Pipedream: ${err.message}` });
+      .json({ success: false, message: `Error contacting Pipedream: ${errorData}` });
   }
 });
 
@@ -68,14 +66,10 @@ app.post("/", async (req, res) => {
 
     console.log("🔗 Incoming JSON-RPC:", { method, params });
 
-    // Normalize the event for Pipedream
+    // ✅ Send directly to Pipedream (no extra nesting)
     const eventPayload = {
-      event: {
-        body: {
-          method,
-          params,
-        },
-      },
+      method,
+      params,
     };
 
     const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, eventPayload, {
@@ -94,12 +88,13 @@ app.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("💥 JSON-RPC Error:", err.message);
+    const errorData = err.response?.data || err.message;
     res.status(500).json({
       jsonrpc: "2.0",
       id: req.body.id || 0,
       error: {
         code: -32000,
-        message: `Error contacting Pipedream: ${err.message}`,
+        message: `Error contacting Pipedream: ${errorData}`,
       },
     });
   }
