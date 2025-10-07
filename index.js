@@ -46,11 +46,15 @@ app.get("/test", async (req, res) => {
     console.log("🔍 Testing full connection to Pipedream + Reddit agent...");
 
     const testPayload = {
-      method: "reddit.search_posts",
-      params: {
-        subreddit: "Construction",
-        query: "estimate",
-        limit: 3
+      event: {
+        body: {
+          method: "reddit.search_posts",
+          params: {
+            subreddit: "Construction",
+            query: "estimate",
+            limit: 3
+          }
+        }
       }
     };
 
