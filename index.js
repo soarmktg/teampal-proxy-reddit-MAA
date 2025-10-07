@@ -43,17 +43,29 @@ app.get("/sse", (req, res) => {
 // ===== Manual Test Route =====
 app.get("/test", async (req, res) => {
   try {
-    console.log("🔍 Testing connection to Pipedream...");
-    const testPayload = { ping: "Render → Pipedream test" };
+    console.log("🔍 Testing full connection to Pipedream + Reddit agent...");
+
+    const testPayload = {
+      method: "reddit.search_posts",
+      params: {
+        subreddit: "Construction",
+        query: "estimate",
+        limit: 3
+      }
+    };
+
     const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, testPayload, {
       headers: { "Content-Type": "application/json" },
       timeout: 15000,
     });
+
     res.send(`✅ Pipedream responded: ${JSON.stringify(pdResponse.data)}`);
   } catch (err) {
+    console.error("❌ Error contacting Pipedream:", err.message);
     res.send(`❌ Error contacting Pipedream: ${err.message}`);
   }
 });
+
 
 // ===== JSON-RPC Endpoint =====
 app.post("/", async (req, res) => {
