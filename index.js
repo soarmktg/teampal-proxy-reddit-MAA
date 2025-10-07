@@ -46,13 +46,15 @@ app.get("/test", async (req, res) => {
     console.log("🔍 Testing full connection to Pipedream + Reddit agent...");
 
     const testPayload = {
-      event: {
-        body: {
-          method: "reddit.search_posts",
-          params: {
-            subreddit: "Construction",
-            query: "estimate",
-            limit: 3
+      body: {
+        event: {
+          body: {
+            method: "reddit.search_posts",
+            params: {
+              subreddit: "Construction",
+              query: "estimate",
+              limit: 3
+            }
           }
         }
       }
@@ -63,6 +65,7 @@ app.get("/test", async (req, res) => {
       timeout: 15000,
     });
 
+    console.log("✅ Pipedream Response:", pdResponse.data);
     res.send(`✅ Pipedream responded: ${JSON.stringify(pdResponse.data)}`);
   } catch (err) {
     console.error("❌ Error contacting Pipedream:", err.message);
