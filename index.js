@@ -6,17 +6,16 @@ import cors from "cors";
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// ====== Middleware ======
+// ===== Middleware =====
 app.use(cors());
 app.use(bodyParser.json());
 
-// ====== Pipedream Webhook ======
+// ===== Pipedream Webhook =====
 const PIPEDREAM_WEBHOOK_URL =
   process.env.PIPEDREAM_URL || "https://eoxveo4ymtvm7s8.m.pipedream.net";
-
 console.log(`✅ Connected to Pipedream webhook: ${PIPEDREAM_WEBHOOK_URL}`);
 
-// ====== SSE Connection ======
+// ===== SSE Connection =====
 let clients = [];
 
 app.get("/", (req, res) => {
@@ -31,7 +30,6 @@ app.get("/sse", (req, res) => {
 
   const client = { id: Date.now(), res };
   clients.push(client);
-
   console.log(`🟢 SSE client connected (${clients.length} total)`);
 
   res.write(`data: ${JSON.stringify({ message: "connected" })}\n\n`);
@@ -42,14 +40,30 @@ app.get("/sse", (req, res) => {
   });
 });
 
-// ====== JSON-RPC Endpoint ======
+// ===== Manual Test Route =====
+app.get("/test", async (req, res) => {
+  try {
+    console.log("🔍 Testing connection to Pipedream...");
+    const testPayload = { ping: "Render → Pipedream test" };
+    const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, testPayload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 15000,
+    });
+    res.send(`✅ Pipedream responded: ${JSON.stringify(pdResponse.data)}`);
+  } catch (err) {
+    res.send(`❌ Error contacting Pipedream: ${err.message}`);
+  }
+});
+
+// ===== JSON-RPC Endpoint =====
 app.post("/", async (req, res) => {
   const body = req.body;
   const method = body.method;
+
   console.log("📥 Incoming JSON-RPC:", method);
 
   try {
-    // 1️⃣ Initialization handshake
+    // 1️⃣ Initialize
     if (method === "initialize") {
       return res.json({
         jsonrpc: "2.0",
@@ -62,7 +76,7 @@ app.post("/", async (req, res) => {
       });
     }
 
-    // 2️⃣ Return available tools
+    // 2️⃣ Tool list
     if (method === "tools/list") {
       return res.json({
         jsonrpc: "2.0",
@@ -81,50 +95,49 @@ app.post("/", async (req, res) => {
                 },
               },
             },
-            {
-              name: "reddit_reply_comment",
-              description: "Reply to a Reddit comment by ID.",
-            },
-            {
-              name: "reddit_send_message",
-              description: "Send a private message to a Reddit user.",
-            },
-            {
-              name: "reddit_submit_post",
-              description: "Submit a new post to a subreddit.",
-            },
-            {
-              name: "reddit_list_subreddits",
-              description: "List your subscribed subreddits.",
-            },
           ],
         },
       });
     }
 
-    // 3️⃣ Handle tool calls
+    // 3️⃣ Tool execution
     if (method === "tools/call") {
       console.log("⚙️ Executing tool:", body.params?.name);
+      const payload = body.params || body;
+      console.log("➡️ Forwarding payload to Pipedream:", payload);
 
-      const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, body.params, {
-        headers: { "Content-Type": "application/json" },
-      });
+      try {
+        const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, payload, {
+          headers: { "Content-Type": "application/json" },
+          timeout: 20000,
+        });
 
-      const data = pdResponse.data;
-      console.log("✅ Pipedream responded:", data.message);
+        const data = pdResponse.data;
+        console.log("✅ Pipedream responded:", data.message || "No message");
 
-      return res.json({
-        jsonrpc: "2.0",
-        id: body.id || null,
-        result: {
-          success: data.success || false,
-          message: data.message || "No message received.",
-          results: data.results || [],
-        },
-      });
+        return res.json({
+          jsonrpc: "2.0",
+          id: body.id || null,
+          result: {
+            success: data.success || false,
+            message: data.message || "No message received.",
+            results: data.results || [],
+          },
+        });
+      } catch (err) {
+        console.error("❌ Pipedream call failed:", err.message);
+        return res.json({
+          jsonrpc: "2.0",
+          id: body.id || null,
+          error: {
+            code: -32000,
+            message: `Pipedream request failed: ${err.message}`,
+          },
+        });
+      }
     }
 
-    // 4️⃣ Fallback
+    // 4️⃣ Unknown method
     return res.json({
       jsonrpc: "2.0",
       id: body.id || null,
@@ -135,25 +148,21 @@ app.post("/", async (req, res) => {
     return res.json({
       jsonrpc: "2.0",
       id: body.id || null,
-      error: {
-        code: -32000,
-        message: `Bridge request failed: ${err.message}`,
-      },
+      error: { code: -32000, message: err.message },
     });
   }
 });
 
-// ====== Keep-Alive Ping ======
+// ===== Keep-alive Ping =====
 setInterval(() => {
   clients.forEach((client) => {
     client.res.write(`data: ${JSON.stringify({ message: "ping" })}\n\n`);
   });
 }, 15000);
 
-// ====== Start Server ======
+// ===== Start Server =====
 app.listen(PORT, () => {
   console.log(`🚀 MCP bridge running on port ${PORT}`);
   console.log(`✅ TeamPal connected via SSE`);
-  console.log(`🌐 Available at your primary URL:`);
-  console.log(`👉 https://teampal-proxy-reddit-maa.onrender.com`);
+  console.log(`🌐 Available at: https://teampal-proxy-reddit-maa.onrender.com`);
 });
