@@ -22,22 +22,30 @@ app.get("/test", async (req, res) => {
   try {
     console.log("🧩 Testing full connection to Pipedream + Reddit agent...");
 
-    // ✅ Simplified payload (no nested 'event' wrapper)
-    const testPayload = {
+    // For /test route
+const testPayload = {
+  event: {
+    body: {
       method: "reddit.search_posts",
       params: {
         subreddit: "Construction",
         query: "estimate",
         limit: 3,
       },
-    };
+    },
+  },
+};
 
-    console.log("📦 Sending payload to Pipedream:", JSON.stringify(testPayload, null, 2));
+// For JSON-RPC route
+const eventPayload = {
+  event: {
+    body: {
+      method,
+      params,
+    },
+  },
+};
 
-    const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, testPayload, {
-      headers: { "Content-Type": "application/json" },
-      timeout: 15000,
-    });
 
     // ✅ Handle both plain and nested responses from Pipedream
     const responseData = pdResponse.data?.body || pdResponse.data;
