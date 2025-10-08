@@ -8,7 +8,7 @@ app.use(express.json());
 
 // ===== CONFIG =====
 const PORT = process.env.PORT || 10000;
-const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net"; // ✅ Replace with your actual Pipedream webhook
+const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net"; // ✅ Replace with your actual Pipedream webhook URL
 
 // ===== STARTUP LOG =====
 app.listen(PORT, () => {
@@ -22,32 +22,27 @@ app.get("/test", async (req, res) => {
   try {
     console.log("🧩 Testing full connection to Pipedream + Reddit agent...");
 
-    // For /test route
-const testPayload = {
-  event: {
-    body: {
-      method: "reddit.search_posts",
-      params: {
-        subreddit: "Construction",
-        query: "estimate",
-        limit: 3,
+    // ✅ Use nested event.body structure (Pipedream expects this)
+    const testPayload = {
+      event: {
+        body: {
+          method: "reddit.search_posts",
+          params: {
+            subreddit: "Construction",
+            query: "estimate",
+            limit: 3,
+          },
+        },
       },
-    },
-  },
-};
+    };
 
-// For JSON-RPC route
-const eventPayload = {
-  event: {
-    body: {
-      method,
-      params,
-    },
-  },
-};
+    console.log("📦 Sending payload to Pipedream:", JSON.stringify(testPayload, null, 2));
 
+    const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, testPayload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 15000,
+    });
 
-    // ✅ Handle both plain and nested responses from Pipedream
     const responseData = pdResponse.data?.body || pdResponse.data;
     console.log("✅ Pipedream returned:", responseData);
 
@@ -74,10 +69,14 @@ app.post("/", async (req, res) => {
 
     console.log("🔗 Incoming JSON-RPC:", { method, params });
 
-    // ✅ Send directly to Pipedream (no extra nesting)
+    // ✅ Use same nested event.body structure for MCP compatibility
     const eventPayload = {
-      method,
-      params,
+      event: {
+        body: {
+          method,
+          params,
+        },
+      },
     };
 
     const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, eventPayload, {
