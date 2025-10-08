@@ -1,5 +1,5 @@
 // ===============================
-// ✅ TeamPal Reddit Proxy (Final)
+// ✅ TeamPal Reddit Proxy (Final Fixed Version)
 // ===============================
 
 import express from "express";
@@ -23,15 +23,13 @@ app.get("/test", async (req, res) => {
   try {
     console.log("🧩 Testing full connection to Pipedream + Reddit agent...");
 
-    // ✅ SIMPLIFIED payload (no 'event' wrapper)
+    // ✅ Correct structure (no extra nested 'body')
     const testPayload = {
-      body: {
-        method: "reddit.search_posts",
-        params: {
-          subreddit: "Construction",
-          query: "estimate",
-          limit: 3,
-        },
+      method: "reddit.search_posts",
+      params: {
+        subreddit: "Construction",
+        query: "estimate",
+        limit: 3,
       },
     };
 
@@ -43,7 +41,7 @@ app.get("/test", async (req, res) => {
     });
 
     const responseData = pdResponse.data?.body || pdResponse.data;
-    console.log("✅ Pipedream returned:", responseData);
+    console.log("✅ Pipedream returned:", JSON.stringify(responseData, null, 2));
 
     res.status(200).json({
       success: true,
@@ -66,10 +64,10 @@ app.post("/", async (req, res) => {
     const incoming = req.body;
     console.log("📥 Incoming request from TeamPal:", JSON.stringify(incoming, null, 2));
 
-    // Normalize structure — forward to Pipedream
-    const payload = {
-      body: incoming.body || incoming,
-    };
+    // ✅ Send correct structure (no nested 'body')
+    const payload = incoming.body || incoming;
+
+    console.log("📦 Forwarding payload to Pipedream:", JSON.stringify(payload, null, 2));
 
     const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, payload, {
       headers: { "Content-Type": "application/json" },
@@ -77,7 +75,7 @@ app.post("/", async (req, res) => {
     });
 
     const responseData = pdResponse.data?.body || pdResponse.data;
-    console.log("✅ Response from Pipedream:", responseData);
+    console.log("✅ Response from Pipedream:", JSON.stringify(responseData, null, 2));
 
     res.status(200).json({
       success: true,
