@@ -1,37 +1,36 @@
+// ===============================
+// ✅ TeamPal Reddit Proxy (Final)
+// ===============================
+
 import express from "express";
 import axios from "axios";
-import cors from "cors";
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 
-// ===== CONFIG =====
 const PORT = process.env.PORT || 10000;
-const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net"; // ✅ Replace with your actual Pipedream webhook URL
 
-// ===== STARTUP LOG =====
-app.listen(PORT, () => {
-  console.log("✅ MCP bridge running on port", PORT);
-  console.log("✅ Connected to Pipedream webhook:", PIPEDREAM_WEBHOOK_URL);
-  console.log("✅ Available at: https://teampal-proxy-reddit-maa.onrender.com");
+// 🧠 Replace with your actual Pipedream HTTP trigger URL
+const PIPEDREAM_WEBHOOK_URL = "https://eoxveo4ymtvm7s8.m.pipedream.net";
+
+// ============= BASIC HEALTH CHECK =============
+app.get("/", (req, res) => {
+  res.send("🟢 TeamPal Reddit Proxy is running!");
 });
 
-// ===== MANUAL TEST ROUTE =====
+// ============= TEST ENDPOINT =============
 app.get("/test", async (req, res) => {
   try {
     console.log("🧩 Testing full connection to Pipedream + Reddit agent...");
 
-    // ✅ Use nested event.body structure (Pipedream expects this)
+    // ✅ SIMPLIFIED payload (no 'event' wrapper)
     const testPayload = {
-      event: {
-        body: {
-          method: "reddit.search_posts",
-          params: {
-            subreddit: "Construction",
-            query: "estimate",
-            limit: 3,
-          },
+      body: {
+        method: "reddit.search_posts",
+        params: {
+          subreddit: "Construction",
+          query: "estimate",
+          limit: 3,
         },
       },
     };
@@ -54,60 +53,49 @@ app.get("/test", async (req, res) => {
   } catch (err) {
     console.error("❌ Error contacting Pipedream:", err.message);
     const errorData = err.response?.data || err.message;
-    res
-      .status(500)
-      .json({ success: false, message: `Error contacting Pipedream: ${errorData}` });
+    res.status(500).json({
+      success: false,
+      message: `Error contacting Pipedream: ${errorData}`,
+    });
   }
 });
 
-// ===== JSON-RPC ENDPOINT (for TeamPal MCP) =====
+// ============= MAIN ROUTE for TeamPal =============
 app.post("/", async (req, res) => {
   try {
-    const body = req.body;
-    const method = body?.method || "initialize";
-    const params = body?.params || {};
+    const incoming = req.body;
+    console.log("📥 Incoming request from TeamPal:", JSON.stringify(incoming, null, 2));
 
-    console.log("🔗 Incoming JSON-RPC:", { method, params });
-
-    // ✅ Use same nested event.body structure for MCP compatibility
-    const eventPayload = {
-      event: {
-        body: {
-          method,
-          params,
-        },
-      },
+    // Normalize structure — forward to Pipedream
+    const payload = {
+      body: incoming.body || incoming,
     };
 
-    const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, eventPayload, {
+    const pdResponse = await axios.post(PIPEDREAM_WEBHOOK_URL, payload, {
       headers: { "Content-Type": "application/json" },
       timeout: 15000,
     });
 
     const responseData = pdResponse.data?.body || pdResponse.data;
-
-    console.log("✅ Pipedream response to JSON-RPC:", responseData);
+    console.log("✅ Response from Pipedream:", responseData);
 
     res.status(200).json({
-      jsonrpc: "2.0",
-      id: body.id || 0,
-      result: responseData,
+      success: true,
+      message: "✅ Forwarded successfully to Pipedream.",
+      data: responseData,
     });
   } catch (err) {
-    console.error("💥 JSON-RPC Error:", err.message);
+    console.error("❌ Error contacting Pipedream:", err.message);
     const errorData = err.response?.data || err.message;
     res.status(500).json({
-      jsonrpc: "2.0",
-      id: req.body.id || 0,
-      error: {
-        code: -32000,
-        message: `Error contacting Pipedream: ${errorData}`,
-      },
+      success: false,
+      message: `Error contacting Pipedream: ${errorData}`,
     });
   }
 });
 
-// ===== HEALTHCHECK =====
-app.get("/", (req, res) => {
-  res.send("✅ TeamPal Reddit MCP proxy is running!");
+// ============= START SERVER =============
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log("🌐 Ready at:", `https://teampal-proxy-reddit-maa.onrender.com`);
 });
